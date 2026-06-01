@@ -2,11 +2,12 @@
 // used to directly use wad.XX functions until i added pk3 support
 // see API.lua
 
+local prevMouseButtons = 0
+
 local currentwadfile
 local selectedlump = 1
 local previewEditing = false
 local lumpScroll, previewScroll = 0, 0
-local visibleRows = 16
 
 local wadPath = ""
 local wadPathEditing = false
@@ -18,7 +19,9 @@ local searchText = ""
 local searchEditing = false
 local filteredLumps = {}
 
-local UI = 
+local folderOpen = {}
+
+local UI =
 {
     bg=5, dark=0, panel=7, border=31,
     title=153, hover=9, select=11
@@ -136,7 +139,9 @@ local function drawButton(v,x,y,patch,text,func)
     v.drawScaled((x+2)*FU,(y+2)*FU,FU/2,v.cachePatch(patch),V_SNAPTOTOP|V_SNAPTOLEFT)
     v.drawString(x+18,y+6,text,V_SNAPTOTOP|V_SNAPTOLEFT|V_ALLOWLOWERCASE|V_MONOSPACE)
 
-    if mouse.buttons & MB_BUTTON1 and hover then func() end
+    local wasClick = (mouse.buttons & MB_BUTTON1) and (prevMouseButtons & MB_BUTTON1) == 0
+
+    if hover and wasClick then prevMouseButtons = mouse.buttons; func() end
 end
 
 local function drawWindow(v)
@@ -231,6 +236,8 @@ local function drawLumpList(v)
     local maxScroll = max(0,#filteredLumps-visible)
     lumpScroll = max(0,min(lumpScroll,maxScroll))
 
+    local drawn = 0
+
     for i=1,visible do
         local listid = i + lumpScroll
         local id = filteredLumps[listid]
@@ -240,43 +247,61 @@ local function drawLumpList(v)
         local e = currentwadfile.entries[id]
         if not e then break end
 
-        local yy = listY + (i-1)*rowh
+        local isFolder = e.name:sub(-1) == "/"
+        local folder = e.name:match("^(.-)/")
 
-        local hover =
-            mx>=x and mx<=x+w
-            and my>=yy and my<=yy+rowh
+        if not (folder and folderOpen[folder] == false and not isFolder) then
+            local yy = listY + drawn * rowh
 
-        // hover
-        if hover then
-            v.drawFill(x,yy,w,rowh, UI.hover|V_SNAPTOTOP|V_SNAPTOLEFT)
+            local hover =
+                mx>=x and mx<=x+w
+                and my>=yy and my<=yy+rowh
+
+            // hover
+            if hover then
+                v.drawFill(x,yy,w,rowh, UI.hover|V_SNAPTOTOP|V_SNAPTOLEFT)
+            end
+
+            if selectedlump == id then
+                v.drawFill(x,yy,w,rowh, UI.select|V_SNAPTOTOP|V_SNAPTOLEFT)
+            end
+
+            // entry icon
+            local icon = "M_FTXT"
+
+            if isFolder then
+                icon = "M_FFLDR"
+            elseif e.name:find("LUA_") or e.name:find(".lua") then
+                icon = "M_FLUA"
+            elseif e.name:find("SOC_") or e.name:find(".soc") then
+                icon = "M_FSOC"
+            elseif isGraphic(e.data) then
+                icon = "M_IMG"
+            elseif e.name:find("_START") or e.name:find("_END") then
+                icon = "M_MARK"
+            end
+
+            v.drawScaled((x+2)*FU, (yy+1)*FU, FU/5, v.cachePatch(icon), V_SNAPTOTOP|V_SNAPTOLEFT)
+
+            // file name
+            v.drawString(x+10,yy, e.name:sub(1,14), V_SNAPTOTOP|V_SNAPTOLEFT|V_ALLOWLOWERCASE, "thin")
+
+            // click
+            local wasClick = (mouse.buttons & MB_BUTTON1) and (prevMouseButtons & MB_BUTTON1) == 0
+
+            if hover and wasClick then
+                if isFolder then
+                    local key = e.name:sub(1, -2) -- remove "/"
+                    folderOpen[key] = not folderOpen[key]
+                else
+                    selectedlump = id
+                end
+            end
+
+            drawn = drawn + 1
         end
 
-        if selectedlump == id then
-            v.drawFill(x,yy,w,rowh, UI.select|V_SNAPTOTOP|V_SNAPTOLEFT)
-        end
-
-        // entry icon
-        local icon = "M_FTXT"
-
-        if e.name:find("LUA_") or e.name:find(".lua") then
-            icon = "M_FLUA"
-        elseif e.name:find("SOC_") or e.name:find(".soc") then
-            icon = "M_FSOC"
-        elseif isGraphic(e.data) then
-            icon = "M_IMG"
-        elseif e.name:find("_START") or e.name:find("_END") then
-            icon = "M_MARK"
-        end
-
-        v.drawScaled((x+2)*FU, (yy+1)*FU, FU/5, v.cachePatch(icon), V_SNAPTOTOP|V_SNAPTOLEFT)
-
-        // file name
-        v.drawString(x+10,yy, e.name:sub(1,14), V_SNAPTOTOP|V_SNAPTOLEFT|V_ALLOWLOWERCASE, "thin")
-
-        // click
-        if hover and mouse.buttons & MB_BUTTON1 then
-            selectedlump = id
-        end
+        i = i + 1
     end
 
     // scroll
@@ -290,6 +315,8 @@ local function drawLumpList(v)
 
         v.drawFill(bx,by+pos,3,size, UI.border|V_SNAPTOTOP|V_SNAPTOLEFT)
     end
+
+    prevMouseButtons = mouse.buttons
 end
 
 local function drawPreview(v)

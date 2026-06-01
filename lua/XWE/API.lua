@@ -2,9 +2,13 @@
 
 rawset(_G, "xwe", {})
 
-// lets pretend you never saw this function
 function xwe.openfile(path)
-    //return pk3.open(path)
+    local pk = pk3.open(path)
+
+    if pk and pk.entries and #pk.entries > 0 then
+        return pk
+    end
+
     return wad.open(path)
 end
 
